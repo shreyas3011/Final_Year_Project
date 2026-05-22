@@ -1,0 +1,57 @@
+{
+  "season_map": {
+    "12": 0,
+    "1": 0,
+    "2": 0,
+    "3": 1,
+    "4": 1,
+    "5": 1,
+    "6": 2,
+    "7": 2,
+    "8": 2,
+    "9": 2,
+    "10": 3,
+    "11": 3
+  },
+  "elevation_cat_bins": [
+    -1,
+    100,
+    500,
+    1500,
+    3000,
+    9999
+  ],
+  "elevation_cat_labels": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "norm_params": {
+    "rainfall_mm": {
+      "min": 0.0,
+      "max": 379.2
+    },
+    "antecedent_7day_mm": {
+      "min": 0.0,
+      "max": 536.4
+    },
+    "elevation_m": {
+      "min": 0.0,
+      "max": 4321.0
+    },
+    "humidity_pct": {
+      "min": 9.0,
+      "max": 100.0
+    },
+    "slope_proxy": {
+      "min": 0.0,
+      "max": 0.8371473537066831
+    },
+    "soil_moisture": {
+      "min": 0.0,
+      "max": 0.515
+    }
+  }
+}

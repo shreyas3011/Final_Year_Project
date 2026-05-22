@@ -1,0 +1,68 @@
+{
+  "rainfall_category_bins": [
+    -1,
+    0,
+    5,
+    25,
+    75,
+    150,
+    999
+  ],
+  "rainfall_category_labels": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "season_map": {
+    "12": 0,
+    "1": 0,
+    "2": 0,
+    "3": 1,
+    "4": 1,
+    "5": 1,
+    "6": 2,
+    "7": 2,
+    "8": 2,
+    "9": 2,
+    "10": 3,
+    "11": 3
+  },
+  "humidity_risk_bins": [
+    0,
+    40,
+    60,
+    80,
+    101
+  ],
+  "humidity_risk_labels": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "norm_params": {
+    "rainfall_mm": {
+      "min": 0.0,
+      "max": 236.6
+    },
+    "humidity_pct": {
+      "min": 13.0,
+      "max": 100.0
+    },
+    "precipitation_hours": {
+      "min": 0.0,
+      "max": 24.0
+    },
+    "elevation_m": {
+      "min": 0.0,
+      "max": 4749.0
+    },
+    "river_discharge_m3s": {
+      "min": 0.0,
+      "max": 45080.65
+    }
+  }
+}

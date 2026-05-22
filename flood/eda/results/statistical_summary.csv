@@ -1,0 +1,10 @@
+Feature,Flood Mean,No-Flood Mean,Difference,Corr (r),p-value,Significant
+rainfall_mm,19.169,1.334,17.835,0.3553,0.0,✓
+temp_max_c,26.652,28.238,-1.586,-0.0905,9e-05,✓
+temp_min_c,20.708,17.281,3.427,0.206,0.0,✓
+humidity_pct,94.681,73.661,21.021,0.5328,0.0,✓
+wind_speed_kmh,15.367,16.218,-0.851,-0.0506,0.028652,✓
+precipitation_hours,11.993,1.87,10.122,0.5885,0.0,✓
+evapotranspiration_mm,2.97,5.152,-2.182,-0.465,0.0,✓
+elevation_m,482.25,482.79,-0.541,-0.0004,0.987373,✗
+river_discharge_m3s,1297.636,55.686,1241.951,0.1494,0.0,✓
