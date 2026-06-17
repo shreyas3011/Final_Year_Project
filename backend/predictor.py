@@ -223,8 +223,9 @@ def _physics_flood_cap(rain, antecedent, discharge, elev):
     ante_score = min(1.0, antecedent / 80.0)       # 80mm over 7 days = saturated
     disc_score = min(1.0, discharge / 2000.0)      # 2000 m³/s = flood-level
 
-    # Overall water signal
-    water_signal = 0.50 * rain_score + 0.30 * ante_score + 0.20 * disc_score
+    # Overall water signal: heavy daily rain alone can cause flash flooding,
+    # or high river discharge/antecedent accumulation can cause riverine flooding.
+    water_signal = max(rain_score, 0.50 * rain_score + 0.30 * ante_score + 0.20 * disc_score)
 
     # Highland penalty (water runs off fast, doesn't accumulate)
     if   elev > 1500: water_signal *= 0.45

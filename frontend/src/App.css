@@ -711,3 +711,126 @@
   .manual-layout { flex-direction: column; overflow-y: auto; }
   .manual-form-panel { width: 100%; }
 }
+
+/* ── Manual Sub-tabs (Flood / Landslide toggle) ─── */
+.manual-subtabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: rgba(15, 23, 42, 0.6);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+
+.manual-subtab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.5rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.manual-subtab:hover {
+  background: rgba(255,255,255,0.05);
+  color: #cbd5e1;
+}
+
+.manual-subtab-active {
+  color: white;
+}
+
+.manual-subtab-flood.manual-subtab-active {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.12);
+}
+
+.manual-subtab-landslide.manual-subtab-active {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.12);
+}
+
+/* ── Model Badge ─── */
+.manual-model-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid;
+  font-size: 0.76rem;
+  font-weight: 600;
+  margin-top: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+/* ── Engineered Feature List ─── */
+.engineered-toggle-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 1.25rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: #94a3b8;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.engineered-toggle-btn:hover {
+  background: rgba(255,255,255,0.06);
+  color: #cbd5e1;
+}
+
+.engineered-list {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.engineered-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.02);
+}
+
+.engineered-item code {
+  font-size: 0.72rem;
+  font-family: 'Menlo', 'Consolas', monospace;
+  color: #a78bfa;
+  white-space: nowrap;
+  min-width: 180px;
+  flex-shrink: 0;
+}
+
+.engineered-item span {
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+/* ── Big Result Number ─── */
+.manual-result-big {
+  font-size: 2.8rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
