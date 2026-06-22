@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import './App.css';
 import { MapContainer, TileLayer, Marker, useMapEvents, CircleMarker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -7,8 +7,11 @@ import L from 'leaflet';
 import {
   Droplets, Mountain, Wind, ThermometerSun, Waves, MapPin,
   Search, Navigation, Layers, Map, Loader, AlertTriangle,
-  CheckCircle, XCircle, Crosshair, FlaskConical, SlidersHorizontal
+  CheckCircle, XCircle, Crosshair, FlaskConical, SlidersHorizontal, Route
 } from 'lucide-react';
+import EvacuationMap from './components/EvacuationMap';
+import { findTopNSafeZones } from './services/orsService';
+import { SAFE_ZONES, ZONE_COLORS } from './data/safeZones';
 
 // Fix for default marker icon in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -61,6 +64,112 @@ function getRiskIcon(pct) {
 async function fetchPrediction(lat, lon) {
   const response = await axios.post(`${API_BASE}/predict`, { lat, lon });
   return response.data;
+}
+
+// ── Formatting helpers ────────────────────────────────────────
+const fmtDist = m => m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`;
+const fmtTime = s => { const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return h > 0 ? `${h} hr ${m} min` : `${m} min`; };
+
+const ZONE_META = {
+  hospital:    { emoji: '🏥', label: 'Hospital',      color: ZONE_COLORS.hospital },
+  relief_camp: { emoji: '⛺', label: 'Relief Camp',   color: ZONE_COLORS.relief_camp },
+  shelter:     { emoji: '🏠', label: 'Shelter',       color: ZONE_COLORS.shelter },
+};
+
+// Creates a small coloured div icon for safe-zone map markers
+function makeSafeZoneIcon(type) {
+  const meta = ZONE_META[type] || ZONE_META.shelter;
+  return L.divIcon({
+    className: '',
+    html: `<div style="
+      width:30px;height:30px;border-radius:50% 50% 50% 0;
+      background:${meta.color};border:2px solid #fff;
+      transform:rotate(-45deg);display:flex;align-items:center;
+      justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.35)
+    "><span style="transform:rotate(45deg);font-size:13px;line-height:1">${meta.emoji}</span></div>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 30],
+    popupAnchor: [0, -32],
+  });
+}
+
+// ── Nearest Safe Zones Panel ──────────────────────────────────
+function NearestSafeZonesPanel({ zones, loading }) {
+  if (!loading && zones.length === 0) return null;
+  return (
+    <div className="glass-card" style={{ marginTop: '12px', padding: '14px' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '8px',
+        marginBottom: '12px',
+      }}>
+        <div style={{
+          width: 28, height: 28, borderRadius: '8px', flexShrink: 0,
+          background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px',
+        }}>🚨</div>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '12px', color: '#e2e8f0' }}>Nearest Safe Zones</div>
+          <div style={{ fontSize: '10px', color: '#94a3b8' }}>Ranked by drive time via ORS API</div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', color: '#94a3b8', fontSize: '12px' }}>
+          <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #6366f1', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite', flexShrink: 0 }} />
+          Finding nearest hospitals & relief camps…
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {zones.map((item, i) => {
+            const meta = ZONE_META[item.zone.type] || ZONE_META.shelter;
+            return (
+              <div key={item.zone.id} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '10px',
+                padding: '10px', borderRadius: '10px',
+                background: i === 0 ? `${meta.color}18` : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${i === 0 ? meta.color + '44' : 'rgba(255,255,255,0.06)'}`,
+                position: 'relative',
+              }}>
+                {i === 0 && (
+                  <div style={{
+                    position: 'absolute', top: -6, right: 8,
+                    background: meta.color, color: '#fff',
+                    fontSize: '9px', fontWeight: 800, padding: '2px 7px',
+                    borderRadius: '20px', letterSpacing: '0.05em', textTransform: 'uppercase',
+                  }}>Nearest</div>
+                )}
+                <div style={{
+                  width: 32, height: 32, borderRadius: '8px', flexShrink: 0,
+                  background: meta.color + '22', border: `1.5px solid ${meta.color}55`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px',
+                }}>{ meta.emoji }</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: '12px', color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {item.zone.name}
+                  </div>
+                  <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '1px', textTransform: 'capitalize' }}>
+                    {meta.label} · {item.zone.state}
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
+                    <span style={{
+                      fontSize: '11px', fontWeight: 700, color: meta.color,
+                      background: meta.color + '18', padding: '2px 7px',
+                      borderRadius: '20px', border: `1px solid ${meta.color}33`,
+                    }}>📍 {fmtDist(item.distanceM)}</span>
+                    <span style={{
+                      fontSize: '11px', fontWeight: 700, color: '#a5b4fc',
+                      background: 'rgba(99,102,241,0.12)', padding: '2px 7px',
+                      borderRadius: '20px', border: '1px solid rgba(99,102,241,0.25)',
+                    }}>🕒 {fmtTime(item.durationSec)}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Sub-components ────────────────────────────────────────────
@@ -176,17 +285,29 @@ function PredictionResult({ prediction }) {
 
 // ── TAB 1: Map Explorer ───────────────────────────────────────
 function TabMapExplorer() {
-  const [position, setPosition] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [prediction, setPrediction] = useState(null);
-  const [error, setError] = useState(null);
+  const [position,     setPosition]     = useState(null);
+  const [loading,      setLoading]      = useState(false);
+  const [prediction,   setPrediction]   = useState(null);
+  const [error,        setError]        = useState(null);
+  const [nearestZones, setNearestZones] = useState([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
+  const [selLat,       setSelLat]       = useState(null);
+  const [selLon,       setSelLon]       = useState(null);
 
   const handleLocationSelect = useCallback(async (lat, lon) => {
     setLoading(true);
     setError(null);
+    setNearestZones([]);
+    setSelLat(lat);
+    setSelLon(lon);
     try {
       const data = await fetchPrediction(lat, lon);
       setPrediction(data);
+      // Fire nearest zones lookup in background (non-blocking)
+      setZonesLoading(true);
+      findTopNSafeZones(lat, lon, SAFE_ZONES, 3)
+        .then(zones => { setNearestZones(zones); setZonesLoading(false); })
+        .catch(() => setZonesLoading(false));
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to fetch predictions');
     } finally {
@@ -232,7 +353,10 @@ function TabMapExplorer() {
             <p className="loading-text">Analyzing satellite telemetry...</p>
           </div>
         ) : prediction ? (
-          <PredictionResult prediction={prediction} />
+          <>
+            <PredictionResult prediction={prediction} />
+            <NearestSafeZonesPanel zones={nearestZones} loading={zonesLoading} />
+          </>
         ) : (
           <div className="empty-card">
             <MapPin size={40} className="empty-icon" />
@@ -249,6 +373,28 @@ function TabMapExplorer() {
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
           />
           <LocationMarker position={position} setPosition={setPosition} onLocationSelect={handleLocationSelect} />
+          {/* Nearest safe zone markers on the map */}
+          {nearestZones.map((item, i) => (
+            <Marker
+              key={`nz-${item.zone.id}`}
+              position={[item.zone.lat, item.zone.lon]}
+              icon={makeSafeZoneIcon(item.zone.type)}
+              zIndexOffset={i === 0 ? 1000 : 0}
+            >
+              <Popup>
+                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', minWidth: '160px' }}>
+                  {i === 0 && <div style={{ color: '#10b981', fontWeight: 700, fontSize: '10px', marginBottom: '4px', textTransform: 'uppercase' }}>⭐ Nearest Safe Zone</div>}
+                  <strong>{item.zone.name}</strong><br />
+                  <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'capitalize' }}>
+                    {item.zone.type.replace('_', ' ')} · {item.zone.state}
+                  </span><br />
+                  <span style={{ fontSize: '11px', color: '#6366f1', fontWeight: 600 }}>
+                    📍 {fmtDist(item.distanceM)} &nbsp;🕒 {fmtTime(item.durationSec)} drive
+                  </span>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
         </MapContainer>
       </div>
     </div>
@@ -257,23 +403,37 @@ function TabMapExplorer() {
 
 // ── TAB 2: Search & GPS ───────────────────────────────────────
 function TabSearchGPS() {
-  const [query, setQuery] = useState('');
-  const [coords, setCoords] = useState(null);
+  const [query,        setQuery]        = useState('');
+  const [coords,       setCoords]       = useState(null);
   const [locationName, setLocationName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const [prediction, setPrediction] = useState(null);
-  const [error, setError] = useState(null);
+  const [loading,      setLoading]      = useState(false);
+  const [gpsLoading,   setGpsLoading]   = useState(false);
+  const [prediction,   setPrediction]   = useState(null);
+  const [error,        setError]        = useState(null);
+  const [nearestZones, setNearestZones] = useState([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
+
+  const [suggestions,        setSuggestions]        = useState([]);
+  const [showSuggestions,    setShowSuggestions]    = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [isTyping,           setIsTyping]           = useState(false);
+  const wrapperRef = useRef(null);
 
   const runPrediction = useCallback(async (lat, lon, name = '') => {
     setLoading(true);
     setError(null);
     setPrediction(null);
+    setNearestZones([]);
     try {
       const data = await fetchPrediction(lat, lon);
       setCoords({ lat, lon });
       setLocationName(name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
       setPrediction(data);
+      // Fire nearest zones lookup in background (non-blocking)
+      setZonesLoading(true);
+      findTopNSafeZones(lat, lon, SAFE_ZONES, 3)
+        .then(zones => { setNearestZones(zones); setZonesLoading(false); })
+        .catch(() => setZonesLoading(false));
     } catch (err) {
       setError(err.response?.data?.detail || 'Prediction failed. Is the backend running?');
     } finally {
@@ -327,6 +487,64 @@ function TabSearchGPS() {
     );
   };
 
+  const handleSelectSuggestion = (sug) => {
+    setIsTyping(false);
+    const shortName = sug.display_name.split(',').slice(0, 2).join(', ');
+    setQuery(shortName);
+    setSuggestions([]);
+    setShowSuggestions(false);
+    runPrediction(parseFloat(sug.lat), parseFloat(sug.lon), shortName);
+  };
+
+  const handleSearchClick = () => {
+    setIsTyping(false);
+    setShowSuggestions(false);
+    handleSearch();
+  };
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [wrapperRef]);
+
+  useEffect(() => {
+    if (!query.trim() || query.length < 2 || !isTyping) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+      setSuggestionsLoading(true);
+      setShowSuggestions(true);
+      try {
+        const res = await axios.get(
+          `https://nominatim.openstreetmap.org/search`,
+          {
+            params: { q: query, format: 'json', limit: 5 },
+            headers: { 'User-Agent': 'TerraGuard-AI/1.0' },
+          }
+        );
+        if (res.data) {
+          setSuggestions(res.data);
+        }
+      } catch (err) {
+        console.error('Error fetching suggestions:', err);
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [query, isTyping]);
+
   return (
     <div className="search-gps-layout">
       {/* Input Panel */}
@@ -356,24 +574,64 @@ function TabSearchGPS() {
           Search by Place Name
         </div>
         <p className="search-panel-desc">Type a city, region, or landmark name to check flood and landslide risks.</p>
-        <div className="search-input-row">
-          <input
-            id="location-search-input"
-            className="search-input"
-            type="text"
-            placeholder="e.g. Mumbai, Kedarnath, Bangladesh..."
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSearch()}
-          />
-          <button
-            id="location-search-btn"
-            className="search-submit-btn"
-            onClick={handleSearch}
-            disabled={loading || gpsLoading}
-          >
-            {loading ? <div className="spinner-sm" /> : <Search size={18} />}
-          </button>
+        <div className="search-input-container" ref={wrapperRef}>
+          <div className="search-input-row">
+            <input
+              id="location-search-input"
+              className="search-input"
+              type="text"
+              placeholder="e.g. Mumbai, Kedarnath, Bangladesh..."
+              value={query}
+              onChange={e => {
+                setQuery(e.target.value);
+                setIsTyping(true);
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  setIsTyping(false);
+                  setShowSuggestions(false);
+                  handleSearch();
+                }
+              }}
+              onFocus={() => {
+                if (suggestions.length > 0) {
+                  setShowSuggestions(true);
+                }
+              }}
+            />
+            <button
+              id="location-search-btn"
+              className="search-submit-btn"
+              onClick={handleSearchClick}
+              disabled={loading || gpsLoading}
+            >
+              {loading ? <div className="spinner-sm" /> : <Search size={18} />}
+            </button>
+          </div>
+
+          {showSuggestions && (
+            <div className="suggestions-list">
+              {suggestionsLoading ? (
+                <div className="suggestions-loading">
+                  <div className="spinner-sm" />
+                  <span>Searching locations...</span>
+                </div>
+              ) : suggestions.length > 0 ? (
+                suggestions.map((sug, idx) => (
+                  <button
+                    key={sug.place_id || idx}
+                    className="suggestion-item"
+                    onClick={() => handleSelectSuggestion(sug)}
+                  >
+                    <MapPin size={14} className="icon-blue" style={{ marginRight: '0.5rem', flexShrink: 0 }} />
+                    <span className="suggestion-text">{sug.display_name}</span>
+                  </button>
+                ))
+              ) : (
+                query.trim().length >= 2 && <div className="suggestions-no-results">No locations found</div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Quick Presets */}
@@ -418,6 +676,7 @@ function TabSearchGPS() {
               </div>
             </div>
             <PredictionResult prediction={prediction} />
+            <NearestSafeZonesPanel zones={nearestZones} loading={zonesLoading} />
           </>
         ) : !gpsLoading && (
           <div className="empty-card empty-card-lg">
@@ -1495,12 +1754,65 @@ function TabManualTest() {
   );
 }
 
+// ── TAB 5: Evacuation Route Planner ───────────────────────────
+function TabEvacuation() {
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* Section header */}
+      <div className="glass-card" style={{ padding: '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: '12px', flexShrink: 0,
+            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '22px', boxShadow: '0 4px 14px rgba(99,102,241,0.45)',
+          }}>
+            🚨
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: '16px', color: '#e2e8f0', marginBottom: '2px' }}>
+              Evacuation Route Planner
+            </div>
+            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+              Integrates OpenRouteService API to find the fastest driving route from a flood-risk point to the nearest hospital, relief camp, or safe shelter.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+            {[
+              { emoji: '🏥', label: 'Hospitals', color: '#1D9E75' },
+              { emoji: '⛺', label: 'Relief Camps', color: '#378ADD' },
+              { emoji: '🏠', label: 'Shelters', color: '#EF9F27' },
+            ].map(item => (
+              <div key={item.label} style={{
+                display: 'flex', alignItems: 'center', gap: '5px',
+                padding: '5px 10px', borderRadius: '20px',
+                background: item.color + '18',
+                border: `1px solid ${item.color}44`,
+                fontSize: '11px', color: item.color, fontWeight: 600,
+              }}>
+                <span>{item.emoji}</span>
+                <span style={{ display: 'none' }}>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Map component fills remaining space */}
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <EvacuationMap floodRiskPoint={null} />
+      </div>
+    </div>
+  );
+}
+
 // ── Root App ──────────────────────────────────────────────────
 const TABS = [
-  { id: 'map',    label: 'Map Explorer',   Icon: Map },
-  { id: 'search', label: 'Search & GPS',   Icon: Crosshair },
-  { id: 'dual',   label: 'Dual Risk Maps', Icon: Layers },
-  { id: 'manual', label: 'Manual Test',    Icon: FlaskConical },
+  { id: 'map',      label: 'Map Explorer',     Icon: Map },
+  { id: 'search',   label: 'Search & GPS',     Icon: Crosshair },
+  { id: 'dual',     label: 'Dual Risk Maps',   Icon: Layers },
+  { id: 'manual',   label: 'Manual Test',      Icon: FlaskConical },
+  { id: 'evacuation', label: 'Evacuation Route', Icon: Route },
 ];
 
 export default function App() {
@@ -1536,10 +1848,11 @@ export default function App() {
 
       {/* Page Content */}
       <main className="page-content">
-        {activeTab === 'map'    && <TabMapExplorer />}
-        {activeTab === 'search' && <TabSearchGPS />}
-        {activeTab === 'dual'   && <TabDualMaps />}
-        {activeTab === 'manual' && <TabManualTest />}
+        {activeTab === 'map'        && <TabMapExplorer />}
+        {activeTab === 'search'     && <TabSearchGPS />}
+        {activeTab === 'dual'       && <TabDualMaps />}
+        {activeTab === 'manual'     && <TabManualTest />}
+        {activeTab === 'evacuation' && <TabEvacuation />}
       </main>
     </div>
   );

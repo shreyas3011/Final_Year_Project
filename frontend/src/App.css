@@ -396,6 +396,65 @@
 .search-submit-btn:hover:not(:disabled) { background: rgba(59,130,246,0.4); }
 .search-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Autocomplete suggestions dropdown styling */
+.search-input-container {
+  position: relative;
+  width: 100%;
+}
+.suggestions-list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  margin-top: 0.35rem;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7), 0 8px 12px -6px rgba(0, 0, 0, 0.7);
+}
+.suggestion-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+.suggestion-item:hover {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  padding-left: 1.1rem;
+}
+.suggestion-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.suggestions-loading, .suggestions-no-results {
+  padding: 0.85rem;
+  color: #64748b;
+  font-size: 0.82rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
 .quick-locs {
   display: flex; flex-wrap: wrap; gap: 0.5rem;
   padding-bottom: 0.5rem;
