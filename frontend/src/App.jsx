@@ -7,9 +7,9 @@ import L from 'leaflet';
 import {
   Droplets, Mountain, Wind, ThermometerSun, Waves, MapPin,
   Search, Navigation, Layers, Map, Loader, AlertTriangle,
-  CheckCircle, XCircle, Crosshair, FlaskConical, SlidersHorizontal, Route
+  CheckCircle, XCircle, Crosshair, FlaskConical, SlidersHorizontal, Hospital
 } from 'lucide-react';
-import EvacuationMap from './components/EvacuationMap';
+import NearbyFacilities from './components/NearbyFacilities';
 import { findTopNSafeZones } from './services/orsService';
 import { SAFE_ZONES, ZONE_COLORS } from './data/safeZones';
 
@@ -1754,57 +1754,15 @@ function TabManualTest() {
   );
 }
 
-// ── TAB 5: Evacuation Route Planner ───────────────────────────
+// ── TAB 5: Nearby Facilities ──────────────────────────────────
 function TabEvacuation() {
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {/* Section header */}
-      <div className="glass-card" style={{ padding: '16px 20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: '12px', flexShrink: 0,
-            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '22px', boxShadow: '0 4px 14px rgba(99,102,241,0.45)',
-          }}>
-            🚨
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: '16px', color: '#e2e8f0', marginBottom: '2px' }}>
-              Evacuation Route Planner
-            </div>
-            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-              Integrates OpenRouteService API to find the fastest driving route from a flood-risk point to the nearest hospital, relief camp, or safe shelter.
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-            {[
-              { emoji: '🏥', label: 'Hospitals', color: '#1D9E75' },
-              { emoji: '⛺', label: 'Relief Camps', color: '#378ADD' },
-              { emoji: '🏠', label: 'Shelters', color: '#EF9F27' },
-            ].map(item => (
-              <div key={item.label} style={{
-                display: 'flex', alignItems: 'center', gap: '5px',
-                padding: '5px 10px', borderRadius: '20px',
-                background: item.color + '18',
-                border: `1px solid ${item.color}44`,
-                fontSize: '11px', color: item.color, fontWeight: 600,
-              }}>
-                <span>{item.emoji}</span>
-                <span style={{ display: 'none' }}>{item.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Map component fills remaining space */}
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <EvacuationMap floodRiskPoint={null} />
-      </div>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <NearbyFacilities />
     </div>
   );
 }
+
 
 // ── Root App ──────────────────────────────────────────────────
 const TABS = [
@@ -1812,7 +1770,7 @@ const TABS = [
   { id: 'search',   label: 'Search & GPS',     Icon: Crosshair },
   { id: 'dual',     label: 'Dual Risk Maps',   Icon: Layers },
   { id: 'manual',   label: 'Manual Test',      Icon: FlaskConical },
-  { id: 'evacuation', label: 'Evacuation Route', Icon: Route },
+  { id: 'evacuation', label: 'Nearby Help', Icon: Hospital },
 ];
 
 export default function App() {

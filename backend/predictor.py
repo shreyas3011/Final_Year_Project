@@ -241,8 +241,12 @@ def _physics_landslide_cap(rain, antecedent, elev, soil_moisture):
     Landslides require: SLOPE (elevation) AND RAIN AND SATURATED SOIL.
     All three must be present — flat terrain = zero, no rain = near zero.
     """
-    # Slope proxy: below 100m = flat, above 1600m = very steep
-    slope_score = min(1.0, max(0.0, (elev - 100) / 1500.0))
+    # Slope proxy: below 80m = flat, above 350m = potentially very steep.
+    # Uses logarithmic scaling consistent with engineered slope features.
+    if elev < 80:
+        slope_score = 0.0
+    else:
+        slope_score = min(1.0, np.log1p(elev - 80) / np.log1p(350 - 80))
 
     # Rain score
     rain_score = min(1.0, rain / 80.0)
@@ -256,6 +260,7 @@ def _physics_landslide_cap(rain, antecedent, elev, soil_moisture):
     ls_signal = slope_score * rain_combined * (0.5 + 0.5 * sm_score)
 
     return min(0.95, 0.04 + 0.91 * ls_signal)
+
 
 
 # ── Main prediction ───────────────────────────────────────────

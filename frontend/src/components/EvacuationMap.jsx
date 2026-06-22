@@ -5,7 +5,7 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 // leaflet.css already imported in App.jsx
-import { findNearestSafeZone, getRoute } from '../services/orsService';
+import { findTopNSafeZones, getRoute } from '../services/orsService';
 import { SAFE_ZONES, ZONE_COLORS } from '../data/safeZones';
 
 // ── Icon setup ────────────────────────────────────────────────────────────────
@@ -132,8 +132,19 @@ const ICONS = {
 const STEP_ARROWS = { 0:'⬅️',1:'↩️',2:'↰',3:'➡️',4:'↪️',5:'↱',6:'⬆️',10:'🏁',11:'⬆️' };
 
 // ── Formatters ────────────────────────────────────────────────────────────────
-const fmtDist = m => m >= 1000 ? `${(m/1000).toFixed(1)} km` : `${m} m`;
-const fmtTime = s => { const h=Math.floor(s/3600),m=Math.floor((s%3600)/60); return h>0?`${h} hr ${m} min`:`${m} min`; };
+const fmtDist = m => {
+  if (m == null || isNaN(m)) return '—';
+  const km = m / 1000;
+  if (km >= 100) return `${Math.round(km)} km`;
+  if (km >= 10)  return `${km.toFixed(1)} km`;
+  if (km >= 1)   return `${km.toFixed(2)} km`;
+  return `${km.toFixed(3)} km`;  // sub-km: show as 0.xxx km
+};
+const fmtTime = s => {
+  if (s == null || isNaN(s)) return '—';
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h} hr ${m} min` : `${m} min`;
+};
 
 // ── Quick preset flood-prone locations ────────────────────────────────────────
 const PRESETS = [
@@ -169,14 +180,16 @@ function MapFlyTo({ position }) {
 // ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 export default function EvacuationMap({ floodRiskPoint = null }) {
   // Route state
-  const [userPoint,   setUserPoint]   = useState(null);   // { lat, lng, label }
+  const [userPoint,   setUserPoint]   = useState(null);
   const [nearestZone, setNearestZone] = useState(null);
+  const [nearbyZones, setNearbyZones] = useState([]);
   const [route,       setRoute]       = useState(null);
-  const [status,      setStatus]      = useState('idle'); // idle|loading|done|error
+  const [isFallback,  setIsFallback]  = useState(false); // true when ORS fails & we use straight-line
+  const [status,      setStatus]      = useState('idle');
   const [errorMsg,    setErrorMsg]    = useState('');
   const [routeBounds, setRouteBounds] = useState(null);
   const [stepsOpen,   setStepsOpen]   = useState(false);
-  const [mapFlyTarget,setMapFlyTarget]= useState(null);   // triggers MapFlyTo
+  const [mapFlyTarget,setMapFlyTarget]= useState(null);
 
   // Location input state
   const [searchQuery,   setSearchQuery]   = useState('');
@@ -185,21 +198,31 @@ export default function EvacuationMap({ floodRiskPoint = null }) {
   const [locError,      setLocError]      = useState('');
   const searchInputRef = useRef(null);
 
-  // ── Core evacuation logic ──────────────────────────────────────────────────
   const runEvacuation = useCallback(async ({ lat, lng, label }) => {
     setUserPoint({ lat, lng, label: label || `${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E` });
     setMapFlyTarget({ lat, lng });
     setRoute(null);
     setNearestZone(null);
+    setNearbyZones([]);
+    setIsFallback(false);
     setErrorMsg('');
     setStatus('loading');
     setStepsOpen(false);
     setLocError('');
     try {
-      const { zone } = await findNearestSafeZone(lat, lng, SAFE_ZONES);
-      setNearestZone(zone);
-      const routeData = await getRoute(lat, lng, zone.lat, zone.lon);
+      const topZones = await findTopNSafeZones(lat, lng, SAFE_ZONES, 8);
+      if (!topZones || topZones.length === 0) throw new Error('No safe zones found near this location.');
+
+      // Skip zones where the destination IS essentially the user's location (< 100m away)
+      const usable = topZones.filter(r => r.distanceM == null || r.distanceM > 100);
+      const candidates = usable.length > 0 ? usable : topZones;
+
+      setNearbyZones(topZones);
+      const nearest = candidates[0];
+      setNearestZone(nearest.zone);
+      const routeData = await getRoute(lat, lng, nearest.zone.lat, nearest.zone.lon);
       setRoute(routeData);
+      setIsFallback(!!(nearest.isFallback || routeData.isFallback));
       setRouteBounds(L.latLngBounds(routeData.coords));
       setStatus('done');
     } catch (err) {
@@ -272,6 +295,8 @@ export default function EvacuationMap({ floodRiskPoint = null }) {
     setUserPoint(null);
     setRoute(null);
     setNearestZone(null);
+    setNearbyZones([]);
+    setIsFallback(false);
     setRouteBounds(null);
     setSearchQuery('');
     setLocError('');
@@ -340,24 +365,27 @@ export default function EvacuationMap({ floodRiskPoint = null }) {
           {routeBounds && <BoundsFitter bounds={routeBounds} />}
           {mapFlyTarget && !routeBounds && <MapFlyTo position={mapFlyTarget} />}
 
-          {/* All safe zone markers */}
-          {SAFE_ZONES.map(z => (
+          {/* Nearby zone markers — shown only after user sets location */}
+          {nearbyZones.map(({ zone: z, distanceM, durationSec }, idx) => (
             <Marker
               key={z.id}
               position={[z.lat, z.lon]}
-              icon={nearestZone?.id === z.id ? ICONS.nearest : (ICONS[z.type] ?? ICONS.shelter)}
-              zIndexOffset={nearestZone?.id === z.id ? 1000 : 0}
+              icon={idx === 0 ? ICONS.nearest : (ICONS[z.type] ?? ICONS.shelter)}
+              zIndexOffset={idx === 0 ? 1000 : 0}
             >
               <Tooltip direction="top" offset={[0, -44]}>
                 <span style={{ fontFamily: 'Inter,sans-serif', fontSize: '12px' }}>{z.name}</span>
               </Tooltip>
               <Popup>
-                <div style={{ fontFamily: 'Inter,sans-serif', fontSize: '13px', minWidth: '170px' }}>
+                <div style={{ fontFamily: 'Inter,sans-serif', fontSize: '13px', minWidth: '185px' }}>
                   <strong>{z.name}</strong><br />
                   <span style={{ fontSize: '11px', color: '#64748b', textTransform: 'capitalize' }}>
                     {z.type.replace('_', ' ')} · {z.state}
+                  </span><br />
+                  <span style={{ fontSize: '11px', color: '#475569' }}>
+                    📏 {fmtDist(distanceM)} · 🕒 {fmtTime(durationSec)}
                   </span>
-                  {nearestZone?.id === z.id && (
+                  {idx === 0 && (
                     <><br /><span style={{ color: '#10b981', fontWeight: 700, fontSize: '11px' }}>
                       ✅ Your evacuation destination
                     </span></>
@@ -382,12 +410,19 @@ export default function EvacuationMap({ floodRiskPoint = null }) {
             </Marker>
           )}
 
-          {/* Evacuation route polylines */}
-          {route && (
+          {/* Evacuation route polylines — layered for glow effect */}
+          {route && route.coords && route.coords.length > 1 && (
             <>
-              <Polyline positions={route.coords} pathOptions={{ color:'#ffffff', weight:9, opacity:0.12 }} />
-              <Polyline positions={route.coords} pathOptions={{ color:'#6366f1', weight:5, opacity:1, dashArray:'12 6' }} />
-              <Polyline positions={route.coords} pathOptions={{ color:'#a5b4fc', weight:2, opacity:0.7 }} />
+              {/* Outer glow */}
+              <Polyline positions={route.coords} pathOptions={{ color: '#6366f1', weight: 18, opacity: 0.08 }} />
+              {/* Shadow */}
+              <Polyline positions={route.coords} pathOptions={{ color: '#000000', weight: 10, opacity: 0.35 }} />
+              {/* Main route line */}
+              <Polyline positions={route.coords} pathOptions={{ color: '#6366f1', weight: 6, opacity: 1 }} />
+              {/* Animated dashes on top */}
+              <Polyline positions={route.coords} pathOptions={{ color: '#ffffff', weight: 2, opacity: 0.9, dashArray: '10 14' }} />
+              {/* Bright center highlight */}
+              <Polyline positions={route.coords} pathOptions={{ color: '#a5b4fc', weight: 1, opacity: 0.6 }} />
             </>
           )}
         </MapContainer>
@@ -548,8 +583,8 @@ export default function EvacuationMap({ floodRiskPoint = null }) {
               Finding nearest safe zone…
             </p>
             <p style={{ margin: '6px 0 0', fontSize: '11px', color: C.textMuted, lineHeight: 1.6 }}>
-              Checking {SAFE_ZONES.length} hospitals &amp; relief camps<br />
-              via ORS Matrix API
+              Scanning {SAFE_ZONES.length} facilities across India<br />
+              Finding nearest hospitals &amp; relief camps…
             </p>
             {userPoint && (
               <div style={{
@@ -613,21 +648,123 @@ export default function EvacuationMap({ floodRiskPoint = null }) {
               </div>
             )}
 
+            {/* Fallback warning banner */}
+            {isFallback && (
+              <div style={{
+                ...card, padding: '9px 13px',
+                background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)',
+              }} className="evac-sidebar-card">
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: '15px', flexShrink: 0 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: '#fcd34d', marginBottom: '2px' }}>
+                      Limited Road Access Detected
+                    </div>
+                    <div style={{ fontSize: '10px', color: '#fbbf24', lineHeight: 1.6 }}>
+                      No drivable roads found near this location (remote/mountainous area).
+                      Showing <strong>straight-line distances</strong> to nearest facilities.
+                      Actual travel may require different routes.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            {nearbyZones.length > 0 && (
+              <div style={{ ...card, padding: 0, overflow: 'hidden' }} className="evac-sidebar-card">
+                <div style={{
+                  padding: '11px 14px', borderBottom: `1px solid ${C.borderLight}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <span style={{ fontWeight: 700, fontSize: '12px', color: C.text }}>🏥 Nearby Facilities</span>
+                  <span style={{
+                    fontSize: '10px', color: C.accent, background: C.accentGlow,
+                    padding: '2px 8px', borderRadius: '20px', fontWeight: 600,
+                  }}>{nearbyZones.length} found</span>
+                </div>
+                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {nearbyZones.map(({ zone: z, distanceM, durationSec }, idx) => {
+                    const typeIcon = z.type === 'hospital' ? '🏥' : z.type === 'relief_camp' ? '⛺' : '🏠';
+                    const typeColor = ZONE_COLORS[z.type] ?? '#94a3b8';
+                    const isNearest = idx === 0;
+                    return (
+                      <div key={z.id} style={{
+                        padding: '10px 14px',
+                        borderBottom: idx < nearbyZones.length - 1 ? `1px solid ${C.borderLight}` : 'none',
+                        background: isNearest ? 'rgba(16,185,129,0.07)' : 'transparent',
+                        display: 'flex', gap: '10px', alignItems: 'flex-start',
+                      }}>
+                        {/* Rank badge */}
+                        <div style={{
+                          width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                          background: isNearest ? 'rgba(16,185,129,0.2)' : C.accentGlow,
+                          border: `1.5px solid ${isNearest ? '#10b981' : C.border}`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '10px', fontWeight: 800,
+                          color: isNearest ? '#34d399' : C.textMuted,
+                        }}>{idx + 1}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: '11px', fontWeight: 700,
+                            color: isNearest ? '#a7f3d0' : C.text,
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                            {typeIcon} {z.name}
+                          </div>
+                          <div style={{ fontSize: '10px', color: typeColor, marginTop: '1px', textTransform: 'capitalize' }}>
+                            {z.type.replace('_', ' ')} · {z.state}
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                            <span style={{
+                              fontSize: '10px', color: C.textMuted,
+                              background: 'rgba(148,163,184,0.08)', padding: '1px 6px', borderRadius: '4px',
+                            }}>📏 {fmtDist(distanceM)}</span>
+                            {durationSec != null && (
+                              <span style={{
+                                fontSize: '10px', color: C.textMuted,
+                                background: 'rgba(148,163,184,0.08)', padding: '1px 6px', borderRadius: '4px',
+                              }}>🕒 {fmtTime(durationSec)}</span>
+                            )}
+                            {durationSec == null && (
+                              <span style={{
+                                fontSize: '10px', color: '#f59e0b',
+                                background: 'rgba(245,158,11,0.1)', padding: '1px 6px', borderRadius: '4px',
+                              }}>📐 Straight-line only</span>
+                            )}
+                          </div>
+                          {isNearest && (
+                            <div style={{ fontSize: '10px', color: '#34d399', marginTop: '4px', fontWeight: 700 }}>
+                              ✅ Route calculated to this facility
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Stats card */}
             <div style={{ ...card }} className="evac-sidebar-card">
               <p style={{ margin: '0 0 12px', fontWeight: 700, fontSize: '13px', color: C.text }}>
                 🗺️ Evacuation Route
               </p>
 
-              {/* Distance + Time */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                <div style={{ background: C.surfaceAlt, borderRadius: '10px', padding: '12px 8px', textAlign: 'center', border: `1px solid ${C.accent}33` }}>
-                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#a5b4fc' }}>{fmtDist(route.distanceM)}</p>
-                  <p style={{ margin: '3px 0 0', fontSize: '9px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Distance</p>
+              {/* Distance + Time + Steps — 3-column stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '7px', marginBottom: '12px' }}>
+                <div style={{ background: C.surfaceAlt, borderRadius: '10px', padding: '11px 6px', textAlign: 'center', border: `1px solid ${C.accent}33` }}>
+                  <p style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#a5b4fc' }}>{fmtDist(route.distanceM)}</p>
+                  <p style={{ margin: '3px 0 0', fontSize: '8px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Distance</p>
                 </div>
-                <div style={{ background: C.surfaceAlt, borderRadius: '10px', padding: '12px 8px', textAlign: 'center', border: `1px solid ${C.success}33` }}>
-                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#6ee7b7' }}>{fmtTime(route.durationSec)}</p>
-                  <p style={{ margin: '3px 0 0', fontSize: '9px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Drive time</p>
+                <div style={{ background: C.surfaceAlt, borderRadius: '10px', padding: '11px 6px', textAlign: 'center', border: `1px solid ${C.success}33` }}>
+                  <p style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#6ee7b7' }}>{fmtTime(route.durationSec)}</p>
+                  <p style={{ margin: '3px 0 0', fontSize: '8px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {isFallback ? 'Walk est.' : 'Drive time'}
+                  </p>
+                </div>
+                <div style={{ background: C.surfaceAlt, borderRadius: '10px', padding: '11px 6px', textAlign: 'center', border: `1px solid rgba(248,113,113,0.2)` }}>
+                  <p style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#fca5a5' }}>{route.steps?.length ?? '—'}</p>
+                  <p style={{ margin: '3px 0 0', fontSize: '8px', color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Turns</p>
                 </div>
               </div>
 
